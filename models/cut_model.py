@@ -65,7 +65,7 @@ class CUTModel(BaseModel):
 
         # specify the training losses you want to print out.
         # The training/test scripts will call <BaseModel.get_current_losses>
-        self.loss_names = ['G_GAN', 'D_real', 'D_fake', 'G', 'NCE']
+        self.loss_names = ['G_GAN', 'D_real', 'D_fake', 'G', 'NCE', 'segmentation']
         self.visual_names = ['real_A', 'fake_B', 'real_B']
         self.nce_layers = [int(i) for i in self.opt.nce_layers.split(',')]
 
@@ -242,10 +242,10 @@ class CUTModel(BaseModel):
             seg_fake_B = self.seg_model(self.fake_B.detatch())
 
             # Run segmentation loss b/w fake_B and GT
-            seg_loss = self.segmentation_criterion(seg_fake_B, self.real_A_seg)
+            self.loss_segmentation = self.segmentation_criterion(seg_fake_B, self.real_A_seg)
             
             # Add seg loss to G loss
-            self.loss_G += self.seg_loss_param * seg_loss
+            self.loss_G += self.seg_loss_param * self.loss_segmentation
 
         return self.loss_G
 
