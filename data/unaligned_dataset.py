@@ -58,6 +58,10 @@ class UnalignedDataset(BaseDataset):
         A_img = Image.open(A_path).convert('RGB')
         B_img = Image.open(B_path).convert('RGB')
 
+        A_path_parts = A_path.split('/')
+        A_seg_path = (A_path_parts[:-2]).join('/') + "trainA_seg/" + A_path_parts[-1]
+        A_seg_img = Image.open(A_seg_path).convert('RGB')
+
         # Apply image transformation
         # For CUT/FastCUT mode, if in finetuning phase (learning rate is decaying),
         # do not perform resize-crop data augmentation of CycleGAN.
@@ -65,9 +69,10 @@ class UnalignedDataset(BaseDataset):
         modified_opt = util.copyconf(self.opt, load_size=self.opt.crop_size if is_finetuning else self.opt.load_size)
         transform = get_transform(modified_opt)
         A = transform(A_img)
+        A_seg = transform(A_seg_img)
         B = transform(B_img)
 
-        return {'A': A, 'B': B, 'A_paths': A_path, 'B_paths': B_path}
+        return {'A': A, 'A_seg': A_seg, 'B': B, 'A_paths': A_path, 'B_paths': B_path}
 
     def __len__(self):
         """Return the total number of images in the dataset.

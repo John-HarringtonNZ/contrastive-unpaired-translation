@@ -37,6 +37,12 @@ class CUTModel(BaseModel):
                             type=util.str2bool, nargs='?', const=True, default=False,
                             help="Enforce flip-equivariance as additional regularization. It's used by FastCUT, but not CUT")
 
+
+        # Segmentation Loss Addition
+        parser.add_argument('--seg_loss_lambda', type=float, default=1.0, help='weight for segmentation loss')
+        parser.add_argument('--segmentation_loss', type=util.str2bool, nargs='?', const=True, default=False, help='use segmentation loss')
+
+
         parser.set_defaults(pool_size=0)  # no image pooling
 
         opt, _ = parser.parse_known_args()
@@ -101,27 +107,28 @@ class CUTModel(BaseModel):
 
 
         ## Add segmentation loss
-        self.USE_SEGMENTATION_LOSS = True
-        if self.USE_SEGMENTATION_LOSS:
+        self.segmentation_loss = opt.segmentation_loss
+        if opt.segmentation_loss:
+
             
             # Import Segmentation Model Class
-            SEG_PATH = ""
+            import os
+            dir_path = os.path.dirname(os.path.realpath(__file__))
 
             # Instantiate Segmentation Model
-            # self.seg_model = None
-
-            # Load Model weights
-            # model.load_state_dict(torch.load(SEG_PATH))
+            checkpoint_file = dir_path + "/../../mmsegmentation/checkpoints/pspnet_r50-d8_512x1024_40k_cityscapes_20200605_003338-2966598c.pth"
+            config_file = dir_path + "/../../mmsegmentation/configs/pspnet/pspnet_r50-d8_512x1024_40k_cityscapes.py"
+            from mmseg.apis import inference_segmentor, init_segmentor
+            self.seg_model = init_segmentor(config_file, checkpoint_file, device=self.device)
 
             # Set Segmentation model to Eval mode
+            self.seg_model.eval()
 
             # Define segmentation loss
-            # self.segmentation_criterion = torch.binary_cross_entropy_with_logits()
+            self.segmentation_criterion = torch.binary_cross_entropy_with_logits()
 
-            # Define segmentaiton loss hyperparameter
-            # self.seg_loss_param = 1
-
-            pass
+            # Define segmentation loss hyperparameter
+            self.seg_loss_lambda = opt.seg_loss_lambda
 
 
     def data_dependent_initialize(self, data):
@@ -174,6 +181,7 @@ class CUTModel(BaseModel):
         AtoB = self.opt.direction == 'AtoB'
         self.real_A = input['A' if AtoB else 'B'].to(self.device)
         self.real_B = input['B' if AtoB else 'A'].to(self.device)
+        self.real_A_seg = input['A_seg'].to(self.device)
         self.image_paths = input['A_paths' if AtoB else 'B_paths']
 
     def forward(self):
@@ -228,14 +236,13 @@ class CUTModel(BaseModel):
         self.loss_G = self.loss_G_GAN + loss_NCE_both
 
         # SEGMENTATION LOSS
-        if self.USE_SEGMENTATION_LOSS:
+        if self.segmentation_loss:
             
-            # Run segmentation model on fake_B and real_A
+            # Run segmentation model on fake_B
             seg_fake_B = self.seg_model(self.fake_B.detatch())
-            seg_real_A = self.seg_model(self.real_A.detatch())
 
-            # Run segmentation loss 
-            seg_loss = self.segmentation_criterion(seg_fake_B, seg_real_A)
+            # Run segmentation loss b/w fake_B and GT
+            seg_loss = self.segmentation_criterion(seg_fake_B, self.real_A_seg)
             
             # Add seg loss to G loss
             self.loss_G += self.seg_loss_param * seg_loss
