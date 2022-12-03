@@ -65,7 +65,9 @@ class CUTModel(BaseModel):
 
         # specify the training losses you want to print out.
         # The training/test scripts will call <BaseModel.get_current_losses>
-        self.loss_names = ['G_GAN', 'D_real', 'D_fake', 'G', 'NCE', 'segmentation']
+        self.loss_names = ['G_GAN', 'D_real', 'D_fake', 'G', 'NCE']
+        if opt.segmentation_loss:
+            self.loss_names.append('segmentation')
         self.visual_names = ['real_A', 'fake_B', 'real_B']
         self.nce_layers = [int(i) for i in self.opt.nce_layers.split(',')]
 
@@ -125,7 +127,7 @@ class CUTModel(BaseModel):
             self.seg_model.eval()
 
             # Define segmentation loss
-            self.segmentation_criterion = torch.binary_cross_entropy_with_logits()
+            # self.segmentation_criterion = torch.binary_cross_entropy_with_logits()
 
             # Define segmentation loss hyperparameter
             self.seg_loss_lambda = opt.seg_loss_lambda
@@ -239,10 +241,10 @@ class CUTModel(BaseModel):
         if self.segmentation_loss:
             
             # Run segmentation model on fake_B
-            seg_fake_B = self.seg_model(self.fake_B.detatch())
+            seg_fake_B = self.seg_model(self.fake_B.detach())
 
             # Run segmentation loss b/w fake_B and GT
-            self.loss_segmentation = self.segmentation_criterion(seg_fake_B, self.real_A_seg)
+            self.loss_segmentation = torch.nn.functional.binary_cross_entropy_with_logits(seg_fake_B, self.real_A_seg)
             
             # Add seg loss to G loss
             self.loss_G += self.seg_loss_param * self.loss_segmentation

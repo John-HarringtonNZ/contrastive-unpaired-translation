@@ -1,5 +1,5 @@
 import os.path
-from data.base_dataset import BaseDataset, get_transform
+from data.base_dataset import BaseDataset, get_transform, get_params
 from data.image_folder import make_dataset
 from PIL import Image
 import random
@@ -59,7 +59,7 @@ class UnalignedDataset(BaseDataset):
         B_img = Image.open(B_path).convert('RGB')
 
         A_path_parts = A_path.split('/')
-        A_seg_path = (A_path_parts[:-2]).join('/') + "trainA_seg/" + A_path_parts[-1]
+        A_seg_path = '/'.join(A_path_parts[:-2]) + "/trainA_seg/" + A_path_parts[-1]
         A_seg_img = Image.open(A_seg_path).convert('RGB')
 
         # Apply image transformation
@@ -67,7 +67,7 @@ class UnalignedDataset(BaseDataset):
         # do not perform resize-crop data augmentation of CycleGAN.
         is_finetuning = self.opt.isTrain and self.current_epoch > self.opt.n_epochs
         modified_opt = util.copyconf(self.opt, load_size=self.opt.crop_size if is_finetuning else self.opt.load_size)
-        params = self.get_params(modified_opt, (256,256))
+        params = get_params(modified_opt, (256,256))
         transform_A = get_transform(modified_opt, params=params)
         A = transform_A(A_img)
         A_seg = transform_A(A_seg_img)
