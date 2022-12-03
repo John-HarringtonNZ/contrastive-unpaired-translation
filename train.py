@@ -73,7 +73,7 @@ if __name__ == '__main__':
         metrics = model.get_metrics()
         if 'fid' in metrics:
             print(f'Epoch {epoch}; FID Score: {metrics["fid"]}')
-        # TODO add FID plot to visualizer as well
+        visualizer.plot_current_metrics(epoch, metrics)
         model.reset_metrics()
 
         if epoch % opt.save_epoch_freq == 0:              # cache our model every <save_epoch_freq> epochs
