@@ -99,6 +99,31 @@ class CUTModel(BaseModel):
         self.fid.to(device='cuda')
         self.fid_real_features_updated = False
 
+
+        ## Add segmentation loss
+        self.USE_SEGMENTATION_LOSS = True
+        if self.USE_SEGMENTATION_LOSS:
+            
+            # Import Segmentation Model Class
+            SEG_PATH = ""
+
+            # Instantiate Segmentation Model
+            # self.seg_model = None
+
+            # Load Model weights
+            # model.load_state_dict(torch.load(SEG_PATH))
+
+            # Set Segmentation model to Eval mode
+
+            # Define segmentation loss
+            # self.segmentation_criterion = torch.binary_cross_entropy_with_logits()
+
+            # Define segmentaiton loss hyperparameter
+            # self.seg_loss_param = 1
+
+            pass
+
+
     def data_dependent_initialize(self, data):
         """
         The feature network netF is defined in terms of the shape of the intermediate, extracted
@@ -201,6 +226,20 @@ class CUTModel(BaseModel):
             loss_NCE_both = self.loss_NCE
 
         self.loss_G = self.loss_G_GAN + loss_NCE_both
+
+        # SEGMENTATION LOSS
+        if self.USE_SEGMENTATION_LOSS:
+            
+            # Run segmentation model on fake_B and real_A
+            seg_fake_B = self.seg_model(self.fake_B.detatch())
+            seg_real_A = self.seg_model(self.real_A.detatch())
+
+            # Run segmentation loss 
+            seg_loss = self.segmentation_criterion(seg_fake_B, seg_real_A)
+            
+            # Add seg loss to G loss
+            self.loss_G += self.seg_loss_param * seg_loss
+
         return self.loss_G
 
     def calculate_NCE_loss(self, src, tgt):
