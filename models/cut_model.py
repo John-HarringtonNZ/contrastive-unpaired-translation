@@ -241,7 +241,7 @@ class CUTModel(BaseModel):
         if self.segmentation_loss:
             
             # Run segmentation model on fake_B
-            seg_fake_B = self.seg_model(self.fake_B.detach())
+            seg_fake_B = inference_segmentor(self.seg_model, self.fake_B.detach())
 
             # Run segmentation loss b/w fake_B and GT
             self.loss_segmentation = torch.nn.functional.binary_cross_entropy_with_logits(seg_fake_B, self.real_A_seg)
