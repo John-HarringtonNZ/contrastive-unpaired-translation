@@ -222,6 +222,39 @@ class Visualizer():
         except VisdomExceptionBase:
             self.create_visdom_connections()
 
+    def plot_current_metrics(self, epoch, metrics):
+        """display the current losses on visdom display: dictionary of error labels and values
+
+        Parameters:
+            epoch (int)           -- current epoch
+            metrics (OrderedDict)  -- training metrics stored in the format of (name, float) pairs
+        """
+        if len(metrics) == 0:
+            return
+
+        plot_name = '_'.join(list(metrics.keys()))
+
+        if plot_name not in self.plot_data:
+            self.plot_data[plot_name] = {'X': [], 'Y': [], 'legend': list(metrics.keys())}
+
+        plot_data = self.plot_data[plot_name]
+        plot_id = list(self.plot_data.keys()).index(plot_name)
+
+        plot_data['X'].append(epoch)
+        plot_data['Y'].append([metrics[k] for k in plot_data['legend']])
+        try:
+            self.vis.line(
+                X=np.stack([np.array(plot_data['X'])] * len(plot_data['legend']), 1),
+                Y=np.array(plot_data['Y']),
+                opts={
+                    'title': self.name,
+                    'legend': plot_data['legend'],
+                    'xlabel': 'epoch',
+                    'ylabel': 'metrics'},
+                win=self.display_id - plot_id)
+        except VisdomExceptionBase:
+            self.create_visdom_connections()
+
     # losses: same format as |losses| of plot_current_losses
     def print_current_losses(self, epoch, iters, losses, t_comp, t_data):
         """print current losses on console; also save the losses to the disk
