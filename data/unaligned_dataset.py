@@ -67,10 +67,12 @@ class UnalignedDataset(BaseDataset):
         # do not perform resize-crop data augmentation of CycleGAN.
         is_finetuning = self.opt.isTrain and self.current_epoch > self.opt.n_epochs
         modified_opt = util.copyconf(self.opt, load_size=self.opt.crop_size if is_finetuning else self.opt.load_size)
-        transform = get_transform(modified_opt)
-        A = transform(A_img)
-        A_seg = transform(A_seg_img)
-        B = transform(B_img)
+        params = self.get_params(modified_opt, (256,256))
+        transform_A = get_transform(modified_opt, params=params)
+        A = transform_A(A_img)
+        A_seg = transform_A(A_seg_img)
+        transform_B = get_transform(modified_opt)
+        B = transform_B(B_img)
 
         return {'A': A, 'A_seg': A_seg, 'B': B, 'A_paths': A_path, 'B_paths': B_path}
 
