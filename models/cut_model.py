@@ -146,7 +146,7 @@ class CUTModel(BaseModel):
             self.seg_model.eval()
 
             # Define segmentation loss
-            # self.segmentation_criterion = torch.binary_cross_entropy_with_logits()
+            self.segmentation_criterion = torch.nn.BCELoss()
 
             # Define segmentation loss hyperparameter
             self.seg_loss_lambda = opt.seg_loss_lambda
@@ -288,7 +288,7 @@ class CUTModel(BaseModel):
             # self.fake_B_seg_viz = real_label_one_hot.permute(2, 0, 1)
 
             # Run segmentation loss b/w fake_B and GT
-            self.loss_segmentation = torch.nn.functional.binary_cross_entropy_with_logits(seg_fake_B.squeeze(), real_label_one_hot.permute(2, 0, 1)[:19])
+            self.loss_segmentation = self.segmentation_criterion(seg_fake_B.unsqueeze(dim=0), real_label_one_hot.permute(2, 0, 1)[:19].unsqueeze(dim=0))
 
             # Add seg loss to G loss
             self.loss_G += self.seg_loss_lambda * self.loss_segmentation
