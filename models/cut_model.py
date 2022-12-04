@@ -86,7 +86,9 @@ class CUTModel(BaseModel):
         self.loss_names = ['G_GAN', 'D_real', 'D_fake', 'G', 'NCE']
         if opt.segmentation_loss:
             self.loss_names.append('segmentation')
-        self.visual_names = ['real_A', 'real_A_seg_viz', 'fake_B_seg_viz', 'fake_B', 'real_B']
+        self.visual_names = ['real_A', 'fake_B', 'real_B']
+        if opt.segmentation_loss:
+            self.visual_names.extend(['real_A_seg_viz', 'fake_B_seg_viz', ])
         self.nce_layers = [int(i) for i in self.opt.nce_layers.split(',')]
 
         if opt.nce_idt and self.isTrain:
@@ -259,7 +261,7 @@ class CUTModel(BaseModel):
         if self.segmentation_loss:
 
             # Run segmentation model on fake_B
-            fake_b_np = self.real_B.cpu().detach().squeeze().numpy()
+            fake_b_np = ((self.fake_B.cpu().detach().squeeze().numpy() + 1) * 127.5).astype(np.uint8)
             seg_fake_B = inference_segmentor_remap(self.seg_model, np.transpose(fake_b_np, (1, 2, 0)))
 
             self.fake_B_seg_viz = seg_fake_B
@@ -276,7 +278,7 @@ class CUTModel(BaseModel):
 
             # Run segmentation loss b/w fake_B and GT
             self.loss_segmentation = torch.nn.functional.binary_cross_entropy_with_logits(seg_fake_B.squeeze(), real_label_one_hot.permute(2, 0, 1))
-            
+
             # Add seg loss to G loss
             self.loss_G += self.seg_loss_lambda * self.loss_segmentation
 

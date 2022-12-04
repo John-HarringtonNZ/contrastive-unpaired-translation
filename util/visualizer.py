@@ -121,13 +121,13 @@ class Visualizer():
 
         # Preprocess Fake viz
 
-        fake_B_seg_viz = torch.zeros((3, visuals['fake_B_seg_viz'].shape[1], visuals['fake_B_seg_viz'].shape[2]))
-        for i in range(visuals['fake_B_seg_viz'].shape[1]):
-            for j in range(visuals['fake_B_seg_viz'].shape[2]):
-                fake_B_seg_viz[:, i, j] = torch.tensor(PALETTE[torch.argmax(visuals['fake_B_seg_viz'][:, i, j]).item()])
-        visuals['fake_B_seg_viz'] = (fake_B_seg_viz.unsqueeze(dim=0) - 127.5) / 127.5
+        if 'fake_B_seg_viz' in visuals:
 
-        breakpoint()
+            fake_B_seg_viz = torch.zeros((3, visuals['fake_B_seg_viz'].shape[1], visuals['fake_B_seg_viz'].shape[2]))
+            for i in range(visuals['fake_B_seg_viz'].shape[1]):
+                for j in range(visuals['fake_B_seg_viz'].shape[2]):
+                    fake_B_seg_viz[:, i, j] = torch.tensor(PALETTE[torch.argmax(visuals['fake_B_seg_viz'][:, i, j]).item()])
+            visuals['fake_B_seg_viz'] = (fake_B_seg_viz.unsqueeze(dim=0) - 127.5) / 127.5      
 
 
         if self.display_id > 0:  # show images in the browser using visdom
