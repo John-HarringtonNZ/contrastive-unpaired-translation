@@ -266,18 +266,29 @@ class CUTModel(BaseModel):
 
             self.fake_B_seg_viz = seg_fake_B
 
-            label_seg = torch.zeros((seg_fake_B.shape[1], seg_fake_B.shape[2]), dtype=torch.int64, device=self.device)            
+            label_seg = 19 * torch.ones((seg_fake_B.shape[1], seg_fake_B.shape[2]), dtype=torch.int64, device=self.device)            
             real_A_seg_ids = self.real_A_seg.squeeze().sum(dim=0)            
+
+            # k = 1
+            # for i in range(real_A_seg_ids.shape[0]):
+            #     for j in range(real_A_seg_ids.shape[1]):
+            #         if real_A_seg_ids[i,j].item() not in PALETTE_SUM and real_A_seg_ids[i,j].item() != 0:
+            #             print("Count: ", k)
+            #             print("loc: ", i, j)
+            #             k += 1
+            #             print("Not in sum: ", real_A_seg_ids[i,j].item())
+            #             print("original: ", self.real_A_seg[0,:,i,j])
+            #             pass
 
             for i, PAL in enumerate(PALETTE_SUM):
                 label_seg[torch.where(real_A_seg_ids == torch.tensor(PAL, dtype=torch.int16, device=self.device))] = i
 
-            real_label_one_hot = torch.nn.functional.one_hot(label_seg, num_classes=seg_fake_B.shape[0]).to(torch.float)
+            real_label_one_hot = torch.nn.functional.one_hot(label_seg, num_classes=seg_fake_B.shape[0] + 1).to(torch.float)
 
             # self.fake_B_seg_viz = real_label_one_hot.permute(2, 0, 1)
 
             # Run segmentation loss b/w fake_B and GT
-            self.loss_segmentation = torch.nn.functional.binary_cross_entropy_with_logits(seg_fake_B.squeeze(), real_label_one_hot.permute(2, 0, 1))
+            self.loss_segmentation = torch.nn.functional.binary_cross_entropy_with_logits(seg_fake_B.squeeze(), real_label_one_hot.permute(2, 0, 1)[:19])
 
             # Add seg loss to G loss
             self.loss_G += self.seg_loss_lambda * self.loss_segmentation

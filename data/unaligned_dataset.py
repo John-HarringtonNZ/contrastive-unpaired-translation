@@ -71,17 +71,17 @@ class UnalignedDataset(BaseDataset):
         modified_opt = util.copyconf(self.opt, load_size=self.opt.crop_size if is_finetuning else self.opt.load_size)
         params = get_params(modified_opt, (256,256))
         transform_A = get_transform(modified_opt, params=params)
-        transform_A_seg = get_transform(modified_opt, params=params)
         A = transform_A(A_img)
-        A_seg = transform_A_seg(A_seg_img)
+        
+        transform_A_seg = get_transform(modified_opt, params=params, method=Image.NEAREST, normalize=False)
+        A_seg = 255 * transform_A_seg(A_seg_img)
+        transform_A_seg_viz = get_transform(modified_opt, params=params)
+        A_seg_viz = (2 * transform_A_seg(A_seg_img)) - 1
 
         transform_B = get_transform(modified_opt)
         B = transform_B(B_img)
 
-        # Convert A_seg to uint8 format
-        A_seg_uint = (255 * A_seg).to(torch.uint8)
-
-        return {'A': A, 'A_seg': A_seg_uint, 'A_seg_viz': A_seg, 'B': B, 'A_paths': A_path, 'B_paths': B_path}
+        return {'A': A, 'A_seg': A_seg.to(torch.uint8), 'A_seg_viz': A_seg_viz, 'B': B, 'A_paths': A_path, 'B_paths': B_path}
 
     def __len__(self):
         """Return the total number of images in the dataset.
