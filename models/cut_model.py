@@ -58,6 +58,8 @@ class CUTModel(BaseModel):
 
         # Segmentation Loss Addition
         parser.add_argument('--seg_loss_lambda', type=float, default=1.0, help='weight for segmentation loss')
+        parser.add_argument('--seg_loss_lambda_step', type=float, default=0.2, help='step increase per epoch')
+        parser.add_argument('--seg_loss_lambda_cap', type=float, default=5.0, help='weight cap')
         parser.add_argument('--segmentation_loss', type=util.str2bool, nargs='?', const=True, default=False, help='use segmentation loss')
 
 
@@ -150,7 +152,12 @@ class CUTModel(BaseModel):
 
             # Define segmentation loss hyperparameter
             self.seg_loss_lambda = opt.seg_loss_lambda
+            self.seg_loss_lambda_cap = opt.seg_loss_lambda_cap
+            self.seg_loss_lambda_step = opt.seg_loss_lambda_step
 
+    
+    def step_segmentation_lambda(self):
+        self.seg_loss_lambda = min(self.seg_loss_lambda+self.seg_loss_lambda_step, self.seg_loss_lambda_cap)
 
     def data_dependent_initialize(self, data):
         """
