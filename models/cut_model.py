@@ -5,6 +5,8 @@ from . import networks
 from .patchnce import PatchNCELoss
 import util.util as util
 from torchmetrics.image.fid import FrechetInceptionDistance
+from mmseg.apis import inference_segmentor_remap, init_segmentor
+import os
 
 
 class CUTModel(BaseModel):
@@ -114,13 +116,12 @@ class CUTModel(BaseModel):
 
             
             # Import Segmentation Model Class
-            import os
             dir_path = os.path.dirname(os.path.realpath(__file__))
 
             # Instantiate Segmentation Model
             checkpoint_file = dir_path + "/../../mmsegmentation/checkpoints/pspnet_r50-d8_512x1024_40k_cityscapes_20200605_003338-2966598c.pth"
             config_file = dir_path + "/../../mmsegmentation/configs/pspnet/pspnet_r50-d8_512x1024_40k_cityscapes.py"
-            from mmseg.apis import inference_segmentor, init_segmentor
+            print("IMPORTING SEGMENTATION")
             self.seg_model = init_segmentor(config_file, checkpoint_file, device=self.device)
 
             # Set Segmentation model to Eval mode
@@ -241,10 +242,13 @@ class CUTModel(BaseModel):
         if self.segmentation_loss:
             
             # Run segmentation model on fake_B
-            seg_fake_B = inference_segmentor(self.seg_model, self.fake_B.detach())
+            fake_b_np = self.fake_B.cpu().detach().squeeze().numpy()
+            seg_fake_B = inference_segmentor_remap(self.seg_model, np.transpose(fake_b_np, (1, 2, 0)))
+
+            seg_fake_B_tensor = rachels_func(seg_fake_B)
 
             # Run segmentation loss b/w fake_B and GT
-            self.loss_segmentation = torch.nn.functional.binary_cross_entropy_with_logits(seg_fake_B, self.real_A_seg)
+            self.loss_segmentation = torch.nn.functional.binary_cross_entropy_with_logits(seg_fake_B_tensor, self.real_A_seg)
             
             # Add seg loss to G loss
             self.loss_G += self.seg_loss_param * self.loss_segmentation

@@ -69,8 +69,10 @@ class UnalignedDataset(BaseDataset):
         modified_opt = util.copyconf(self.opt, load_size=self.opt.crop_size if is_finetuning else self.opt.load_size)
         params = get_params(modified_opt, (256,256))
         transform_A = get_transform(modified_opt, params=params)
+        transform_A_seg = get_transform(modified_opt, params=params, normalize=False)
         A = transform_A(A_img)
-        A_seg = transform_A(A_seg_img)
+        A_seg = transform_A_seg(A_seg_img)
+
         transform_B = get_transform(modified_opt)
         B = transform_B(B_img)
 
