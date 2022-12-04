@@ -44,6 +44,9 @@ if __name__ == '__main__':
         dataset.set_epoch(epoch)
         for i, data in enumerate(dataset):  # inner loop within one epoch
             iter_start_time = time.time()  # timer for computation per iteration
+
+            print("Iter: ", i)
+
             if total_iters % opt.print_freq == 0:
                 t_data = iter_start_time - iter_data_time
 

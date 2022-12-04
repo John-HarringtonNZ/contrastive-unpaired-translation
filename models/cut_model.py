@@ -8,6 +8,18 @@ from torchmetrics.image.fid import FrechetInceptionDistance
 from mmseg.apis import inference_segmentor_remap, init_segmentor
 import os
 
+from collections import defaultdict
+
+PALETTE = [[128, 64, 128], [244, 35, 232], [70, 70, 70], [102, 102, 156],
+    [190, 153, 153], [153, 153, 153], [250, 170, 30], [220, 220, 0],
+    [107, 142, 35], [152, 251, 152], [70, 130, 180], [220, 20, 60],
+    [255, 0, 0], [0, 0, 142], [0, 0, 70], [0, 60, 100],
+    [0, 80, 100], [0, 0, 230], [119, 11, 32]]
+
+INV_PALETTE = defaultdict(lambda: -1)
+for i, x in enumerate(PALETTE):
+    INV_PALETTE[tuple(x)] = i
+
 
 class CUTModel(BaseModel):
     """ This class implements CUT and FastCUT model, described in the paper
@@ -245,13 +257,18 @@ class CUTModel(BaseModel):
             fake_b_np = self.fake_B.cpu().detach().squeeze().numpy()
             seg_fake_B = inference_segmentor_remap(self.seg_model, np.transpose(fake_b_np, (1, 2, 0)))
 
-            seg_fake_B_tensor = rachels_func(seg_fake_B)
+            label_seg = torch.zeros((seg_fake_B.shape[0], seg_fake_B.shape[1], seg_fake_B.shape[2]), dtype=torch.float, device=self.device)
+            for i in range(label_seg.shape[1]):
+                for j in range(label_seg.shape[2]):
+                    valid_label = INV_PALETTE[tuple(self.real_A_seg[:, :, i, j].tolist()[0])]
+                    if valid_label >= 0:
+                        label_seg[valid_label, i, j] = 1
 
             # Run segmentation loss b/w fake_B and GT
-            self.loss_segmentation = torch.nn.functional.binary_cross_entropy_with_logits(seg_fake_B_tensor, self.real_A_seg)
+            self.loss_segmentation = torch.nn.functional.binary_cross_entropy_with_logits(seg_fake_B.squeeze(), label_seg)
             
             # Add seg loss to G loss
-            self.loss_G += self.seg_loss_param * self.loss_segmentation
+            self.loss_G += self.seg_loss_lambda * self.loss_segmentation
 
         return self.loss_G
 
