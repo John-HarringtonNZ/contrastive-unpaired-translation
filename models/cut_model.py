@@ -9,12 +9,16 @@ from mmseg.apis import inference_segmentor_remap, init_segmentor
 import os
 
 from collections import defaultdict
+import wandb
+
 
 PALETTE = [[128, 64, 128], [244, 35, 232], [70, 70, 70], [102, 102, 156],
     [190, 153, 153], [153, 153, 153], [250, 170, 30], [220, 220, 0],
     [107, 142, 35], [152, 251, 152], [70, 130, 180], [220, 20, 60],
     [255, 0, 0], [0, 0, 142], [0, 0, 70], [0, 60, 100],
     [0, 80, 100], [0, 0, 230], [119, 11, 32]]
+
+PALETTE_SUM = [sum(color) for color in PALETTE]
 
 INV_PALETTE = defaultdict(lambda: -1)
 for i, x in enumerate(PALETTE):
@@ -82,7 +86,7 @@ class CUTModel(BaseModel):
         self.loss_names = ['G_GAN', 'D_real', 'D_fake', 'G', 'NCE']
         if opt.segmentation_loss:
             self.loss_names.append('segmentation')
-        self.visual_names = ['real_A', 'fake_B', 'real_B']
+        self.visual_names = ['real_A', 'real_A_seg_viz', 'fake_B_seg_viz', 'fake_B', 'real_B']
         self.nce_layers = [int(i) for i in self.opt.nce_layers.split(',')]
 
         if opt.nce_idt and self.isTrain:
@@ -131,8 +135,8 @@ class CUTModel(BaseModel):
             dir_path = os.path.dirname(os.path.realpath(__file__))
 
             # Instantiate Segmentation Model
-            checkpoint_file = dir_path + "/../../mmsegmentation/checkpoints/pspnet_r50-d8_512x1024_40k_cityscapes_20200605_003338-2966598c.pth"
-            config_file = dir_path + "/../../mmsegmentation/configs/pspnet/pspnet_r50-d8_512x1024_40k_cityscapes.py"
+            checkpoint_file = dir_path + "/../../mmsegmentation/checkpoints/pspnet_r18-d8_512x1024_80k_cityscapes_20201225_021458-09ffa746.pth"
+            config_file = dir_path + "/../../mmsegmentation/configs/pspnet/pspnet_r18-d8_512x1024_80k_cityscapes.py"
             print("IMPORTING SEGMENTATION")
             self.seg_model = init_segmentor(config_file, checkpoint_file, device=self.device)
 
@@ -197,6 +201,7 @@ class CUTModel(BaseModel):
         self.real_A = input['A' if AtoB else 'B'].to(self.device)
         self.real_B = input['B' if AtoB else 'A'].to(self.device)
         self.real_A_seg = input['A_seg'].to(self.device)
+        self.real_A_seg_viz = input['A_seg_viz'].to(self.device)
         self.image_paths = input['A_paths' if AtoB else 'B_paths']
 
     def forward(self):
@@ -252,20 +257,25 @@ class CUTModel(BaseModel):
 
         # SEGMENTATION LOSS
         if self.segmentation_loss:
-            
+
             # Run segmentation model on fake_B
-            fake_b_np = self.fake_B.cpu().detach().squeeze().numpy()
+            fake_b_np = self.real_B.cpu().detach().squeeze().numpy()
             seg_fake_B = inference_segmentor_remap(self.seg_model, np.transpose(fake_b_np, (1, 2, 0)))
 
-            label_seg = torch.zeros((seg_fake_B.shape[0], seg_fake_B.shape[1], seg_fake_B.shape[2]), dtype=torch.float, device=self.device)
-            for i in range(label_seg.shape[1]):
-                for j in range(label_seg.shape[2]):
-                    valid_label = INV_PALETTE[tuple(self.real_A_seg[:, :, i, j].tolist()[0])]
-                    if valid_label >= 0:
-                        label_seg[valid_label, i, j] = 1
+            self.fake_B_seg_viz = seg_fake_B
+
+            label_seg = torch.zeros((seg_fake_B.shape[1], seg_fake_B.shape[2]), dtype=torch.int64, device=self.device)            
+            real_A_seg_ids = self.real_A_seg.squeeze().sum(dim=0)            
+
+            for i, PAL in enumerate(PALETTE_SUM):
+                label_seg[torch.where(real_A_seg_ids == torch.tensor(PAL, dtype=torch.int16, device=self.device))] = i
+
+            real_label_one_hot = torch.nn.functional.one_hot(label_seg, num_classes=seg_fake_B.shape[0]).to(torch.float)
+
+            # self.fake_B_seg_viz = real_label_one_hot.permute(2, 0, 1)
 
             # Run segmentation loss b/w fake_B and GT
-            self.loss_segmentation = torch.nn.functional.binary_cross_entropy_with_logits(seg_fake_B.squeeze(), label_seg)
+            self.loss_segmentation = torch.nn.functional.binary_cross_entropy_with_logits(seg_fake_B.squeeze(), real_label_one_hot.permute(2, 0, 1))
             
             # Add seg loss to G loss
             self.loss_G += self.seg_loss_lambda * self.loss_segmentation
