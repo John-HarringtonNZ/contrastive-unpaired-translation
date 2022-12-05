@@ -125,9 +125,10 @@ class CUTModel(BaseModel):
         # Define class members for computing FID per epoch
         # Using same feature size as default in pytorch-fid, used for CUT results
         # https://github.com/mseitzer/pytorch-fid/blob/3d604a25516746c3a4a5548c8610e99010b2c819/src/pytorch_fid/fid_score.py#L62
-        self.fid = FrechetInceptionDistance(feature=2048, reset_real_features=False)
-        self.fid.to(device='cuda')
-        self.fid_real_features_updated = False
+        if self.isTrain:
+            self.fid = FrechetInceptionDistance(feature=2048, reset_real_features=False)
+            self.fid.to(device='cuda')
+            self.fid_real_features_updated = False
 
 
         ## Add segmentation loss
@@ -322,14 +323,18 @@ class CUTModel(BaseModel):
 
     def compute_metrics_on_batch(self):
         # Convert from [-1, 1] to [0, 255] normalization
-        self.fid.update(torch.round((self.fake_B+1)*127.5).to(torch.uint8), real=False)
-        if not self.fid_real_features_updated:
-            self.fid.update(torch.round((self.real_B+1)*127.5).to(torch.uint8), real=True)
+        if self.isTrain:
+            self.fid.update(torch.round((self.fake_B+1)*127.5).to(torch.uint8), real=False)
+            if not self.fid_real_features_updated:
+                self.fid.update(torch.round((self.real_B+1)*127.5).to(torch.uint8), real=True)
 
     def reset_metrics(self):
         # Assume that once we call reset_metrics for the first time, all real features have been loaded
-        self.fid_real_features_updated = True
-        self.fid.reset()
+        if self.isTrain:
+            self.fid_real_features_updated = True
+            self.fid.reset()
 
     def get_metrics(self):
+        if not self.isTrain:
+            return {}
         return {'fid': self.fid.compute().item()}

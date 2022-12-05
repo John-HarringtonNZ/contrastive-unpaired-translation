@@ -61,7 +61,7 @@ class UnalignedDataset(BaseDataset):
         B_img = Image.open(B_path).convert('RGB')
 
         A_path_parts = A_path.split('/')
-        A_seg_path = '/'.join(A_path_parts[:-2]) + "/trainA_seg/" + A_path_parts[-1]
+        A_seg_path = '/'.join(A_path_parts[:-2]) + f"/{self.opt.phase}A_seg/" + A_path_parts[-1]
         A_seg_img = Image.open(A_seg_path).convert('RGB')
 
         # Apply image transformation
