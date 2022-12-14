@@ -5,6 +5,24 @@ from . import networks
 from .patchnce import PatchNCELoss
 import util.util as util
 from torchmetrics.image.fid import FrechetInceptionDistance
+from mmseg.apis import inference_segmentor_remap, init_segmentor
+import os
+
+from collections import defaultdict
+import wandb
+
+
+PALETTE = [[128, 64, 128], [244, 35, 232], [70, 70, 70], [102, 102, 156],
+    [190, 153, 153], [153, 153, 153], [250, 170, 30], [220, 220, 0],
+    [107, 142, 35], [152, 251, 152], [70, 130, 180], [220, 20, 60],
+    [255, 0, 0], [0, 0, 142], [0, 0, 70], [0, 60, 100],
+    [0, 80, 100], [0, 0, 230], [119, 11, 32]]
+
+PALETTE_SUM = [sum(color) for color in PALETTE]
+
+INV_PALETTE = defaultdict(lambda: -1)
+for i, x in enumerate(PALETTE):
+    INV_PALETTE[tuple(x)] = i
 
 
 class CUTModel(BaseModel):
@@ -37,6 +55,14 @@ class CUTModel(BaseModel):
                             type=util.str2bool, nargs='?', const=True, default=False,
                             help="Enforce flip-equivariance as additional regularization. It's used by FastCUT, but not CUT")
 
+
+        # Segmentation Loss Addition
+        parser.add_argument('--seg_loss_lambda', type=float, default=1.0, help='weight for segmentation loss')
+        parser.add_argument('--seg_loss_lambda_step', type=float, default=0.2, help='step increase per epoch')
+        parser.add_argument('--seg_loss_lambda_cap', type=float, default=5.0, help='weight cap')
+        parser.add_argument('--segmentation_loss', type=util.str2bool, nargs='?', const=True, default=False, help='use segmentation loss')
+
+
         parser.set_defaults(pool_size=0)  # no image pooling
 
         opt, _ = parser.parse_known_args()
@@ -60,7 +86,11 @@ class CUTModel(BaseModel):
         # specify the training losses you want to print out.
         # The training/test scripts will call <BaseModel.get_current_losses>
         self.loss_names = ['G_GAN', 'D_real', 'D_fake', 'G', 'NCE']
+        if opt.segmentation_loss:
+            self.loss_names.append('segmentation')
         self.visual_names = ['real_A', 'fake_B', 'real_B']
+        if opt.segmentation_loss:
+            self.visual_names.extend(['real_A_seg_viz', 'fake_B_seg_viz', ])
         self.nce_layers = [int(i) for i in self.opt.nce_layers.split(',')]
 
         if opt.nce_idt and self.isTrain:
@@ -95,9 +125,40 @@ class CUTModel(BaseModel):
         # Define class members for computing FID per epoch
         # Using same feature size as default in pytorch-fid, used for CUT results
         # https://github.com/mseitzer/pytorch-fid/blob/3d604a25516746c3a4a5548c8610e99010b2c819/src/pytorch_fid/fid_score.py#L62
-        self.fid = FrechetInceptionDistance(feature=2048, reset_real_features=False)
-        self.fid.to(device='cuda')
-        self.fid_real_features_updated = False
+        if self.isTrain:
+            self.fid = FrechetInceptionDistance(feature=2048, reset_real_features=False)
+            self.fid.to(device='cuda')
+            self.fid_real_features_updated = False
+
+
+        ## Add segmentation loss
+        self.segmentation_loss = opt.segmentation_loss
+        if opt.segmentation_loss:
+
+            
+            # Import Segmentation Model Class
+            dir_path = os.path.dirname(os.path.realpath(__file__))
+
+            # Instantiate Segmentation Model
+            checkpoint_file = dir_path + "/../../mmsegmentation/checkpoints/pspnet_r18-d8_512x1024_80k_cityscapes_20201225_021458-09ffa746.pth"
+            config_file = dir_path + "/../../mmsegmentation/configs/pspnet/pspnet_r18-d8_512x1024_80k_cityscapes.py"
+            print("IMPORTING SEGMENTATION")
+            self.seg_model = init_segmentor(config_file, checkpoint_file, device=self.device)
+
+            # Set Segmentation model to Eval mode
+            self.seg_model.eval()
+
+            # Define segmentation loss
+            self.segmentation_criterion = torch.nn.BCELoss()
+
+            # Define segmentation loss hyperparameter
+            self.seg_loss_lambda = opt.seg_loss_lambda
+            self.seg_loss_lambda_cap = opt.seg_loss_lambda_cap
+            self.seg_loss_lambda_step = opt.seg_loss_lambda_step
+
+    
+    def step_segmentation_lambda(self):
+        self.seg_loss_lambda = min(self.seg_loss_lambda+self.seg_loss_lambda_step, self.seg_loss_lambda_cap)
 
     def data_dependent_initialize(self, data):
         """
@@ -149,6 +210,8 @@ class CUTModel(BaseModel):
         AtoB = self.opt.direction == 'AtoB'
         self.real_A = input['A' if AtoB else 'B'].to(self.device)
         self.real_B = input['B' if AtoB else 'A'].to(self.device)
+        self.real_A_seg = input['A_seg'].to(self.device)
+        self.real_A_seg_viz = input['A_seg_viz'].to(self.device)
         self.image_paths = input['A_paths' if AtoB else 'B_paths']
 
     def forward(self):
@@ -201,6 +264,43 @@ class CUTModel(BaseModel):
             loss_NCE_both = self.loss_NCE
 
         self.loss_G = self.loss_G_GAN + loss_NCE_both
+
+        # SEGMENTATION LOSS
+        if self.segmentation_loss:
+
+            # Run segmentation model on fake_B
+            fake_b_np = ((self.fake_B.cpu().detach().squeeze().numpy() + 1) * 127.5).astype(np.uint8)
+            seg_fake_B = inference_segmentor_remap(self.seg_model, np.transpose(fake_b_np, (1, 2, 0)))
+
+            self.fake_B_seg_viz = seg_fake_B
+
+            label_seg = 19 * torch.ones((seg_fake_B.shape[1], seg_fake_B.shape[2]), dtype=torch.int64, device=self.device)            
+            real_A_seg_ids = self.real_A_seg.squeeze().sum(dim=0)            
+
+            # k = 1
+            # for i in range(real_A_seg_ids.shape[0]):
+            #     for j in range(real_A_seg_ids.shape[1]):
+            #         if real_A_seg_ids[i,j].item() not in PALETTE_SUM and real_A_seg_ids[i,j].item() != 0:
+            #             print("Count: ", k)
+            #             print("loc: ", i, j)
+            #             k += 1
+            #             print("Not in sum: ", real_A_seg_ids[i,j].item())
+            #             print("original: ", self.real_A_seg[0,:,i,j])
+            #             pass
+
+            for i, PAL in enumerate(PALETTE_SUM):
+                label_seg[torch.where(real_A_seg_ids == torch.tensor(PAL, dtype=torch.int16, device=self.device))] = i
+
+            real_label_one_hot = torch.nn.functional.one_hot(label_seg, num_classes=seg_fake_B.shape[0] + 1).to(torch.float)
+
+            # self.fake_B_seg_viz = real_label_one_hot.permute(2, 0, 1)
+
+            # Run segmentation loss b/w fake_B and GT
+            self.loss_segmentation = self.segmentation_criterion(seg_fake_B.unsqueeze(dim=0), real_label_one_hot.permute(2, 0, 1)[:19].unsqueeze(dim=0))
+
+            # Add seg loss to G loss
+            self.loss_G += self.seg_loss_lambda * self.loss_segmentation
+
         return self.loss_G
 
     def calculate_NCE_loss(self, src, tgt):
@@ -223,14 +323,18 @@ class CUTModel(BaseModel):
 
     def compute_metrics_on_batch(self):
         # Convert from [-1, 1] to [0, 255] normalization
-        self.fid.update(torch.round((self.fake_B+1)*127.5).to(torch.uint8), real=False)
-        if not self.fid_real_features_updated:
-            self.fid.update(torch.round((self.real_B+1)*127.5).to(torch.uint8), real=True)
+        if self.isTrain:
+            self.fid.update(torch.round((self.fake_B+1)*127.5).to(torch.uint8), real=False)
+            if not self.fid_real_features_updated:
+                self.fid.update(torch.round((self.real_B+1)*127.5).to(torch.uint8), real=True)
 
     def reset_metrics(self):
         # Assume that once we call reset_metrics for the first time, all real features have been loaded
-        self.fid_real_features_updated = True
-        self.fid.reset()
+        if self.isTrain:
+            self.fid_real_features_updated = True
+            self.fid.reset()
 
     def get_metrics(self):
+        if not self.isTrain:
+            return {}
         return {'fid': self.fid.compute().item()}

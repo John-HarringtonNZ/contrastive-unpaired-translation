@@ -1,9 +1,11 @@
 import os.path
-from data.base_dataset import BaseDataset, get_transform
+from data.base_dataset import BaseDataset, get_transform, get_params
 from data.image_folder import make_dataset
 from PIL import Image
 import random
 import util.util as util
+import torch
+import numpy as np
 
 
 class UnalignedDataset(BaseDataset):
@@ -58,16 +60,28 @@ class UnalignedDataset(BaseDataset):
         A_img = Image.open(A_path).convert('RGB')
         B_img = Image.open(B_path).convert('RGB')
 
+        A_path_parts = A_path.split('/')
+        A_seg_path = '/'.join(A_path_parts[:-2]) + f"/{self.opt.phase}A_seg/" + A_path_parts[-1]
+        A_seg_img = Image.open(A_seg_path).convert('RGB')
+
         # Apply image transformation
         # For CUT/FastCUT mode, if in finetuning phase (learning rate is decaying),
         # do not perform resize-crop data augmentation of CycleGAN.
         is_finetuning = self.opt.isTrain and self.current_epoch > self.opt.n_epochs
         modified_opt = util.copyconf(self.opt, load_size=self.opt.crop_size if is_finetuning else self.opt.load_size)
-        transform = get_transform(modified_opt)
-        A = transform(A_img)
-        B = transform(B_img)
+        params = get_params(modified_opt, (256,256))
+        transform_A = get_transform(modified_opt, params=params)
+        A = transform_A(A_img)
+        
+        transform_A_seg = get_transform(modified_opt, params=params, method=Image.NEAREST, normalize=False)
+        A_seg = 255 * transform_A_seg(A_seg_img)
+        transform_A_seg_viz = get_transform(modified_opt, params=params)
+        A_seg_viz = (2 * transform_A_seg(A_seg_img)) - 1
 
-        return {'A': A, 'B': B, 'A_paths': A_path, 'B_paths': B_path}
+        transform_B = get_transform(modified_opt)
+        B = transform_B(B_img)
+
+        return {'A': A, 'A_seg': A_seg.to(torch.uint8), 'A_seg_viz': A_seg_viz, 'B': B, 'A_paths': A_path, 'B_paths': B_path}
 
     def __len__(self):
         """Return the total number of images in the dataset.

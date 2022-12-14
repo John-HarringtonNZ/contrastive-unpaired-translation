@@ -44,6 +44,7 @@ if __name__ == '__main__':
         dataset.set_epoch(epoch)
         for i, data in enumerate(dataset):  # inner loop within one epoch
             iter_start_time = time.time()  # timer for computation per iteration
+
             if total_iters % opt.print_freq == 0:
                 t_data = iter_start_time - iter_data_time
 
@@ -110,6 +111,10 @@ if __name__ == '__main__':
         # TODO add FID plot to visualizer as well
         visualizer.plot_current_metrics(epoch, metrics)
         model.reset_metrics()
+
+        # step lambda
+        if opt.segmentation_loss:
+            model.step_segmentation_lambda()
 
         if epoch % opt.save_epoch_freq == 0:              # cache our model every <save_epoch_freq> epochs
             print('saving the model at the end of epoch %d, iters %d' % (epoch, total_iters))

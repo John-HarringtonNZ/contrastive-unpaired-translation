@@ -5,6 +5,7 @@ import ntpath
 import time
 from . import util, html
 from subprocess import Popen, PIPE
+import torch
 
 if sys.version_info[0] == 2:
     VisdomExceptionBase = Exception
@@ -111,6 +112,24 @@ class Visualizer():
             epoch (int) - - the current epoch
             save_result (bool) - - if save the current results to an HTML file
         """
+
+        PALETTE = [[128, 64, 128], [244, 35, 232], [70, 70, 70], [102, 102, 156],
+            [190, 153, 153], [153, 153, 153], [250, 170, 30], [220, 220, 0],
+            [107, 142, 35], [152, 251, 152], [70, 130, 180], [220, 20, 60],
+            [255, 0, 0], [0, 0, 142], [0, 0, 70], [0, 60, 100],
+            [0, 80, 100], [0, 0, 230], [119, 11, 32]]
+
+        # Preprocess Fake viz
+
+        if 'fake_B_seg_viz' in visuals:
+
+            fake_B_seg_viz = torch.zeros((3, visuals['fake_B_seg_viz'].shape[1], visuals['fake_B_seg_viz'].shape[2]))
+            for i in range(visuals['fake_B_seg_viz'].shape[1]):
+                for j in range(visuals['fake_B_seg_viz'].shape[2]):
+                    fake_B_seg_viz[:, i, j] = torch.tensor(PALETTE[torch.argmax(visuals['fake_B_seg_viz'][:, i, j]).item()])
+            visuals['fake_B_seg_viz'] = (fake_B_seg_viz.unsqueeze(dim=0) - 127.5) / 127.5      
+
+
         if self.display_id > 0:  # show images in the browser using visdom
             ncols = self.ncols
             if ncols > 0:        # show all the images in one visdom panel

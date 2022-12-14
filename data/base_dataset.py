@@ -70,6 +70,7 @@ def get_params(opt, size):
     elif opt.preprocess == 'scale_width_and_crop':
         new_w = opt.load_size
         new_h = opt.load_size * h // w
+    new_h /= 2
 
     x = random.randint(0, np.maximum(0, new_w - opt.crop_size))
     y = random.randint(0, np.maximum(0, new_h - opt.crop_size))
@@ -79,7 +80,7 @@ def get_params(opt, size):
     return {'crop_pos': (x, y), 'flip': flip}
 
 
-def get_transform(opt, params=None, grayscale=False, method=Image.BICUBIC, convert=True):
+def get_transform(opt, params=None, grayscale=False, method=Image.BICUBIC, convert=True, normalize=True):
     transform_list = []
     if grayscale:
         transform_list.append(transforms.Grayscale(1))
@@ -101,7 +102,7 @@ def get_transform(opt, params=None, grayscale=False, method=Image.BICUBIC, conve
         else:
             transform_list.append(transforms.Lambda(lambda img: __random_zoom(img, opt.load_size, opt.crop_size, method, factor=params["scale_factor"])))
 
-    if 'crop' in opt.preprocess:
+    if 'crop' in opt.preprocess and not opt.no_crop:
         if params is None or 'crop_pos' not in params:
             transform_list.append(transforms.RandomCrop(opt.crop_size))
         else:
@@ -124,10 +125,11 @@ def get_transform(opt, params=None, grayscale=False, method=Image.BICUBIC, conve
 
     if convert:
         transform_list += [transforms.ToTensor()]
-        if grayscale:
-            transform_list += [transforms.Normalize((0.5,), (0.5,))]
-        else:
-            transform_list += [transforms.Normalize((0.5, 0.5, 0.5), (0.5, 0.5, 0.5))]
+        if normalize:
+            if grayscale:
+                transform_list += [transforms.Normalize((0.5,), (0.5,))]
+            else:
+                transform_list += [transforms.Normalize((0.5, 0.5, 0.5), (0.5, 0.5, 0.5))]
     return transforms.Compose(transform_list)
 
 

@@ -42,6 +42,7 @@ if __name__ == '__main__':
     opt.batch_size = 1    # test code only supports batch_size = 1
     opt.serial_batches = True  # disable data shuffling; comment this line if results on randomly chosen images are needed.
     opt.no_flip = True    # no flip; comment this line if results on flipped images are needed.
+    opt.no_crop = True    # no crop; comment this line if results on cropped images are needed.
     opt.display_id = -1   # no visdom display; the test code saves the results to a HTML file.
     dataset = create_dataset(opt)  # create a dataset given opt.dataset_mode and other options
     train_dataset = create_dataset(util.copyconf(opt, phase="train"))
